@@ -49,6 +49,14 @@ class NoticeDetail:
     source_url: Optional[str] = None
 
 
+@dataclass
+class AttachmentLink:
+    """详情页上声明的一个附件：链接、文件名与站点声明的 SHA-256。"""
+    url: str
+    filename: str
+    declared_sha256: Optional[str] = None
+
+
 # 站点对空字段常用的占位符，解析时一律视为空值
 EMPTY_MARKERS = {"—", "–", "-", "/", "无", "空", "暂无"}
 
@@ -169,3 +177,87 @@ def parse_detail(html: str, source_url: str) -> NoticeDetail:
     if not detail.notice_no:
         raise ValueError("详情页缺少公告编号字段")
     return detail
+
+
+# 声明摘要可能出现的属性名/标签别名
+_HASH_ATTRS = ("data-sha256", "data-hash", "data-digest")
+_HASH_LABELS = ("SHA-256", "SHA256", "摘要", "哈希", "HASH")
+
+_HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+def normalize_sha256(raw: Optional[str]) -> Optional[str]:
+    """规范化声明摘要：去空白、转小写；不是 64 位十六进制则返回 None。"""
+    value = _clean(raw)
+    if not value:
+        return None
+    token = value.split()[-1].strip().lower()
+    return token if _HEX64.match(token) else None
+
+
+def parse_attachments(html: str, source_url: str) -> list[AttachmentLink]:
+    """解析详情页中的招标文件附件清单。
+
+    支持两种结构：
+      1. ``table.attachment-table a``：同行单元格中给出文件名/摘要；
+      2. ``ul.attachment-list a``：链接文本为文件名，摘要写在 data-* 属性
+         或同级/父级 ``.sha256`` 元素中。
+    同名不同链接保留为独立条目，按链接去重。
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    results: list[AttachmentLink] = []
+    seen: set[str] = set()
+
+    def _hash_from_container(container) -> Optional[str]:
+        for attr in _HASH_ATTRS:
+            value = normalize_sha256(container.get(attr))
+            if value:
+                return value
+        node = container.select_one(".sha256, .hash, .digest")
+        if node is not None:
+            value = normalize_sha256(node.get_text())
+            if value:
+                return value
+        return None
+
+    def _hash_from_row(row) -> Optional[str]:
+        cells = row.find_all(["th", "td"])
+        for idx, cell in enumerate(cells):
+            label = _clean(cell.get_text()) or ""
+            if any(key in label for key in _HASH_LABELS):
+                # “SHA-256：<值>” 同格，或值在下一格
+                text = cell.get_text()
+                tail = text.split("：", 1)[-1].split(":", 1)[-1]
+                value = normalize_sha256(tail)
+                if value:
+                    return value
+                if idx + 1 < len(cells):
+                    value = normalize_sha256(cells[idx + 1].get_text())
+                    if value:
+                        return value
+        return None
+
+    for link in soup.select(
+        "table.attachment-table a, ul.attachment-list a, .attachments a"
+    ):
+        href = link.get("href")
+        if not href:
+            continue
+        url = urljoin(source_url, href)
+        if url in seen:
+            continue
+        filename = _clean(link.get_text()) or url.rsplit("/", 1)[-1]
+
+        declared = normalize_sha256(link.get("data-sha256"))
+        if declared is None:
+            declared = _hash_from_container(link.parent)
+        row = link.find_parent("tr")
+        if declared is None and row is not None:
+            declared = _hash_from_row(row)
+
+        seen.add(url)
+        results.append(
+            AttachmentLink(url=url, filename=filename, declared_sha256=declared)
+        )
+
+    return results

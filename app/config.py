@@ -22,3 +22,6 @@ RETRY_BACKOFF = float(os.getenv("RETRY_BACKOFF", "0.5"))
 
 # 详情页抓取失败时是否保留上次完整结果（需求要求保留，默认开启）
 KEEP_LAST_ON_DETAIL_FAILURE = _env_bool("KEEP_LAST_ON_DETAIL_FAILURE", True)
+
+# 附件下载的体积上限（字节），超过即视为下载失败，避免无界拉取
+ATTACHMENT_MAX_BYTES = int(os.getenv("ATTACHMENT_MAX_BYTES", str(50 * 1024 * 1024)))

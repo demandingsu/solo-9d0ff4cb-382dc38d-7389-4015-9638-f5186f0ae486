@@ -56,3 +56,65 @@ class SyncResponse(BaseModel):
     failed_count: int
     kept_last: int
     message: Optional[str] = None
+
+
+class ManifestEntry(BaseModel):
+    """核验时观察到的一个附件清单条目。"""
+    url: str
+    filename: str
+    declared_sha256: Optional[str] = None
+
+
+class ManifestChangeEntry(BaseModel):
+    url: str
+    filename: str
+    declared_sha256: Optional[str] = None
+
+
+class ManifestChange(BaseModel):
+    """核验前后两次读取详情页观察到的清单差异。"""
+    added: list[ManifestChangeEntry] = []
+    removed: list[ManifestChangeEntry] = []
+    changed: list[ManifestChangeEntry] = Field(
+        default=[], description="同一链接的文件名或声明摘要发生变化"
+    )
+
+
+class AttachmentCheckItem(BaseModel):
+    filename: str = Field(..., description="附件文件名（同名不同链接分别核验）")
+    url: str = Field(..., description="附件来源链接")
+    declared_sha256: Optional[str] = Field(
+        None, description="详情页声明的 SHA-256；缺失时为 null"
+    )
+    actual_sha256: Optional[str] = Field(
+        None, description="按下载字节实测的 SHA-256；下载失败时为 null"
+    )
+    status: str = Field(
+        ..., description="ok / digest_mismatch / missing_declared_digest / "
+        "download_failed"
+    )
+    reason: Optional[str] = Field(None, description="异常原因说明；正常时为 null")
+
+
+class VerificationResponse(BaseModel):
+    notice_no: str
+    source_url: Optional[str] = None
+    verification_id: str
+    status: str = Field(
+        ..., description="all_available / needs_review；任何异常都不得报全部可用"
+    )
+    total_attachments: int
+    available_count: int = Field(..., description="状态为 ok 的附件数量")
+    reasons: list[str] = Field(
+        default=[], description="整次核验的异常原因代码汇总"
+    )
+    manifest_changed: bool
+    manifest_change: ManifestChange
+    attachments: list[AttachmentCheckItem] = []
+    pre_snapshot: list[ManifestEntry] = Field(
+        default=[], description="核验前读取到的附件清单"
+    )
+    post_snapshot: list[ManifestEntry] = Field(
+        default=[], description="核验后读取到的附件清单"
+    )
+    checked_at: str

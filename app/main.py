@@ -2,11 +2,13 @@
 
 接口
 ----
-GET  /health                       健康检查
-POST /api/v1/sync                  同步指定列表页及其详情页
-GET  /api/v1/chains                查询全部引用链与孤立异常公告
-GET  /api/v1/announcements/{no}    查询单条公告
-GET  /api/v1/sync-runs             查询同步执行记录
+GET  /health                                       健康检查
+POST /api/v1/sync                                  同步指定列表页及其详情页
+GET  /api/v1/chains                                查询全部引用链与孤立异常公告
+GET  /api/v1/announcements/{no}                    查询单条公告
+POST /api/v1/announcements/{no}/attachments/verify 附件下载与 SHA-256 核验
+GET  /api/v1/verification-runs                     附件核验执行记录
+GET  /api/v1/sync-runs                             查询同步执行记录
 """
 from __future__ import annotations
 
@@ -15,7 +17,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
-from . import db, service
+from . import db, service, verification
 from .models import (
     AnnouncementItem,
     Chain,
@@ -23,6 +25,7 @@ from .models import (
     QueryResponse,
     SyncRequest,
     SyncResponse,
+    VerificationResponse,
 )
 
 @asynccontextmanager
@@ -141,6 +144,29 @@ def get_announcement(notice_no: str) -> dict:
     data = dict(row)
     data["conflict_reasons"] = _loads(data["conflict_reasons"])
     return data
+
+
+@app.post(
+    "/api/v1/announcements/{notice_no}/attachments/verify",
+    response_model=VerificationResponse,
+)
+def verify_notice_attachments(notice_no: str) -> dict:
+    """对已同步公告的招标文件附件执行下载与 SHA-256 核验。"""
+    conn = db.connect()
+    db.init_db(conn)
+    exists = conn.execute(
+        "SELECT 1 FROM announcements WHERE notice_no = ?", (notice_no,)
+    ).fetchone()
+    conn.close()
+    if exists is None:
+        raise HTTPException(status_code=404, detail="公告不存在，请先执行同步")
+    return verification.verify_attachments(notice_no)
+
+
+@app.get("/api/v1/verification-runs")
+def list_verification_runs(notice_no: str | None = None, limit: int = 20) -> dict:
+    limit = max(1, min(limit, 100))
+    return {"runs": verification.list_verifications(notice_no, limit)}
 
 
 @app.get("/api/v1/sync-runs")

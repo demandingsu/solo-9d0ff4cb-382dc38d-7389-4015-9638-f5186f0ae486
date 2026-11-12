@@ -8,6 +8,7 @@ services:
       FETCH_TIMEOUT: "10"
       FETCH_RETRIES: "2"
       KEEP_LAST_ON_DETAIL_FAILURE: "true"
+      ATTACHMENT_MAX_BYTES: "52428800"
     ports:
       - "8000:8000"
     volumes:

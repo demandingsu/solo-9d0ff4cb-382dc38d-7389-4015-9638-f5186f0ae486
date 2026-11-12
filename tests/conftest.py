@@ -30,6 +30,7 @@ def site_base_url() -> str:
     thread.start()
     # 每个测试会话从正常状态开始
     sample_server.FAIL_ENABLED["H-001"] = False
+    sample_server.MANIFEST_CHANGED["H-001"] = False
     yield f"http://127.0.0.1:{port}"
     httpd.shutdown()
     httpd.server_close()
@@ -69,3 +70,27 @@ def set_fail(site_base_url):
         _fail_toggle(site_base_url, enabled)
 
     return _set
+
+
+@pytest.fixture()
+def set_manifest(site_base_url):
+    def _set(enabled: bool) -> None:
+        conn = HTTPConnection("127.0.0.1", site_base_url.rsplit(":", 1)[1])
+        conn.request(
+            "GET", f"/manifest-toggle?enabled={'1' if enabled else '0'}"
+        )
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+
+    return _set
+
+
+@pytest.fixture(autouse=True)
+def _reset_sample_toggles():
+    """每个用例独立，运行期开关恢复默认，避免跨用例污染。"""
+    sample_server.FAIL_ENABLED["H-001"] = False
+    sample_server.MANIFEST_CHANGED["H-001"] = False
+    yield
+    sample_server.FAIL_ENABLED["H-001"] = False
+    sample_server.MANIFEST_CHANGED["H-001"] = False

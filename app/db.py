@@ -41,6 +41,26 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     kept_last       INTEGER NOT NULL DEFAULT 0,
     message         TEXT
 );
+
+CREATE TABLE IF NOT EXISTS verification_runs (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    verification_id     TEXT NOT NULL UNIQUE,       -- 一次附件核验的标识
+    notice_no           TEXT NOT NULL,              -- 被核验的公告编号
+    source_url          TEXT,                       -- 来源详情页
+    started_at          TEXT NOT NULL,
+    finished_at         TEXT NOT NULL,
+    status              TEXT NOT NULL,              -- all_available / needs_review
+    total_attachments   INTEGER NOT NULL DEFAULT 0,
+    available_count     INTEGER NOT NULL DEFAULT 0,
+    reasons             TEXT NOT NULL DEFAULT '[]', -- 异常原因代码，JSON 数组
+    manifest_changed    INTEGER NOT NULL DEFAULT 0,
+    manifest_change     TEXT,                       -- 清单差异，JSON 字符串
+    pre_snapshot        TEXT,                       -- 核验前清单，JSON 字符串
+    post_snapshot       TEXT,                       -- 核验后清单，JSON 字符串
+    attachments         TEXT NOT NULL               -- 逐项核验结果，JSON 字符串
+);
+
+CREATE INDEX IF NOT EXISTS idx_verify_notice ON verification_runs(notice_no);
 """
 
 
